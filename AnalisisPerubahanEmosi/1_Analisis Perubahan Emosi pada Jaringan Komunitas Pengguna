@@ -1,0 +1,666 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Mengenalisis Interaction Network dari Data Twitter"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "id": "WOgEDNzCXsq6"
+   },
+   "source": [
+    "### Persiapan Data"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#!pip install networkx==2.3"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**Proses install Library ForceAtlas2**"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Library ForceAtlas2 digunakan untuk pengelompokan node-node berdasarkan komunitas sehingga mempermudah untuk diamati dan dianalisis"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#!pip install ForceAtlas2\n",
+    "#!pip install fa2\n",
+    "#!pip install python_louvain"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**Melakukan import libraries**"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#Import modules\n",
+    "%matplotlib inline\n",
+    "\n",
+    "#handling data\n",
+    "#import libraries\n",
+    "import glob\n",
+    "import ast\n",
+    "import json\n",
+    "import random\n",
+    "import collections\n",
+    "import datetime\n",
+    "import forceatlas2 \n",
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "import networkx.algorithms.community as nx_comm\n",
+    "\n",
+    "from operator import itemgetter\n",
+    "from networkx.readwrite import json_graph\n",
+    "from scipy import stats\n",
+    "from datetime import datetime\n",
+    "from networkx.algorithms.community.centrality import girvan_newman\n",
+    "from networkx.algorithms import community \n",
+    "from itertools import combinations\n",
+    "\n",
+    "#handling information\n",
+    "import re\n",
+    "\n",
+    "#handling plots\n",
+    "import matplotlib.pyplot as plt\n",
+    "import seaborn as sns\n",
+    "\n",
+    "#for network creation\n",
+    "import networkx as nx"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Load Data"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**1. Load Data Graph**"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Membaca file data graf"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#graph data before deepwalk\n",
+    "#basic_graph = nx.read_graphml('../data/interractions/noncovid/02062021_all_graph_data_before_diferencing_13122019-13062020.graphml')\n",
+    "#basic_graph = nx.read_graphml('../data/interractions/covid/23062021_all_graph_data_before_diferencing_13122019-13062020.graphml')\n",
+    "\n",
+    "basic_graph = nx.read_graphml(\"dataset/output/noncovid/7_07032022_noncovid_graph_data_before_deepwalk.graphml\")\n",
+    "#basic_graph = nx.read_graphml(\"dataset/output/covid/7_07032022_covid_graph_data_after_deepwalk.graphml\")\n",
+    "\n",
+    "#graph data after deepwalk\n",
+    "#graph_after_deepwalk = nx.read_graphml(\"dataset/output/noncovid/7_07032022_noncovid_graph_data_after_deepwalk.graphml\") \n",
+    "#graph_after_deepwalk = nx.read_graphml(\"dataset/output/covid/7_07032022_covid_graph_data_after_deepwalk.graphml\") "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Number of nodes:  98\n",
+      "Number of edges:  426\n"
+     ]
+    }
+   ],
+   "source": [
+    "print(\"Number of nodes: \", basic_graph.number_of_nodes())\n",
+    "print(\"Number of edges: \", basic_graph.number_of_edges())"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**2. Load Data Klasterisasi Graf**"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Membaca file hasil klasterisasi perilaku setiap pengguna"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "graf_clustering_result = pd.read_csv('dataset/output/noncovid/7_06042022_before_covid_final_user_behavior_result.csv')\n",
+    "#graf_clustering_result = pd.read_csv('dataset/output/covid/7_06042022_after_covid_final_user_behavior_result.csv')\n",
+    "graf_clustering_result = graf_clustering_result.loc[:, ~graf_clustering_result.columns.str.contains('^Unnamed')]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**3. Load Data Emotion Recall Task**"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Membaca file hasil pengolahan Emotion Recal Task (ERT)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "index_cluster = [4, 44, 53, 54, 77]\n",
+    "#index_cluster = [0, 1, 23]\n",
+    "\n",
+    "ert_result = pd.DataFrame(columns=['username', 'ert_words', 'total_valence_score'])\n",
+    "\n",
+    "for i in index_cluster:\n",
+    "    \n",
+    "    data_skor_valensi = pd.read_csv('dataset/output/skor_valensi_data_{}.csv'.format(i))\n",
+    "    \n",
+    "    ert_result = ert_result.append(data_skor_valensi)\n",
+    "\n",
+    "#ert_result = pd.read_csv('dataset/output/covid/skor_valensi_after_covid.csv')\n",
+    "ert_result = ert_result.loc[:, ~ert_result.columns.str.contains('^Unnamed')]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Pengaturan Komponen Graph"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**1. Mengubah Node ID**"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "graph_data = basic_graph.copy()\n",
+    "test_graph_data = basic_graph.copy()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#for node in graph_data:\n",
+    "\n",
+    "#    data = graf_clustering_result[graf_clustering_result['user_alias'] == int(node)]\n",
+    "#    node_name = data['username'][data['username'].index[0]]\n",
+    "\n",
+    "#    mapping = {'{}'.format(node): node_name}\n",
+    "#    graph_data = nx.relabel_nodes(graph_data, mapping)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "user_dt = pd.read_csv('dataset/output/noncovid/7_06042022_before_covid_final_user_behavior_result.csv')\n",
+    "#user_dt = pd.read_csv('dataset/output/covid/7_06042022_after_covid_final_user_behavior_result.csv')\n",
+    "user_dt_list = user_dt['username'].tolist()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#test_data_user = user_dt[user_dt['cluster'] == 35]\n",
+    "#test_data_user['cluster'].value_counts()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 15,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "remove = [node for node in list(graph_data.nodes()) if node not in user_dt_list ]\n",
+    "graph_data.remove_nodes_from(remove)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "0"
+      ]
+     },
+     "execution_count": 16,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "len(graph_data)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def trim_degrees(graph, degree):\n",
+    "    final_graph = graph.copy()\n",
+    "    \n",
+    "    data = nx.degree(final_graph)\n",
+    "    list_final_graph = list(final_graph.nodes)\n",
+    "    \n",
+    "    for node in list_final_graph:\n",
+    "        if data[node]<=degree: \n",
+    "            final_graph.remove_node(node)\n",
+    "            \n",
+    "    return final_graph"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 18,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "0"
+      ]
+     },
+     "execution_count": 18,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "selected_graph = trim_degrees(graph_data, 0)\n",
+    "len(selected_graph)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**2. Komponen Klasterisasi Graf**"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 19,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def clustering_graph(node):\n",
+    "    \n",
+    "    data = graf_clustering_result[graf_clustering_result['username'] == node]\n",
+    "    cluster_number = data['cluster'][data['cluster'].index[0]]\n",
+    "    \n",
+    "    return cluster_number\n",
+    "\n",
+    "def change_node_color(node):\n",
+    "    set_color = '#808080'\n",
+    "    \n",
+    "    cluster_number = clustering_graph(node)\n",
+    "    \n",
+    "    if cluster_number == 53:\n",
+    "    #if cluster_number == 1:\n",
+    "        #set_color = '#DDA0DD'\n",
+    "        set_color = '#A9A9A9'\n",
+    "    elif cluster_number == 54:\n",
+    "    #elif cluster_number == 0:\n",
+    "        #blue\n",
+    "        #set_color = '#B0E0E6'\n",
+    "        set_color = '#778899'\n",
+    "    elif cluster_number == 44:\n",
+    "    #elif cluster_number == 23:\n",
+    "        #green\n",
+    "        #set_color = '#9ACD32'\n",
+    "        set_color = '#DCDCDC'\n",
+    "    elif cluster_number == 4:\n",
+    "        #yellow\n",
+    "    #    set_color = '#FFDEAD'\n",
+    "        set_color = '#000077'\n",
+    "    elif cluster_number == 77:\n",
+    "        #red\n",
+    "        set_color = '#bdb76b'\n",
+    "        \n",
+    "    return set_color\n",
+    "#778899"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 20,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def discretization_weight(edge_weight):\n",
+    "    size = []\n",
+    "    \n",
+    "    for i in edge_weight:\n",
+    "        if i > 10 and i < 25:\n",
+    "            size.append(1)\n",
+    "        elif i > 25 and i < 50:\n",
+    "            size.append(2)\n",
+    "        elif i > 50 and i < 75:\n",
+    "            size.append(3)\n",
+    "        elif i > 75 and i < 100:\n",
+    "            size.append(4)\n",
+    "        elif i > 100 and i < 150:\n",
+    "            size.append(5)\n",
+    "        elif i > 150 and i < 200:\n",
+    "            size.append(6)\n",
+    "        elif i > 200 and i < 250:\n",
+    "            size.append(7)\n",
+    "        elif i > 250 and i < 500:\n",
+    "            size.append(8)\n",
+    "        elif i > 500 and i < 1000:\n",
+    "            size.append(9)\n",
+    "        else:\n",
+    "            size.append(10)\n",
+    "    \n",
+    "    return size"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 21,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def change_edge_color(color):\n",
+    "    set_color = '#DCDCD5'\n",
+    "    \n",
+    "    if color == 'red':\n",
+    "        set_color = '#C0C0C0'\n",
+    "    elif color == 'blue':\n",
+    "        set_color = '#808000'\n",
+    "    elif color == 'green':\n",
+    "        set_color = '#B0C4DE'\n",
+    "        \n",
+    "    return set_color"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Implementasi Graf"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**1. Graf berdasarkan Hasil Klasterisasi dari Density Peak Clustering Algoritm**"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Menampilkan interaksi ke dalam bentuk graph NetworkX"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 22,
+   "metadata": {},
+   "outputs": [
+    {
+     "ename": "IndexError",
+     "evalue": "list index out of range",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[0;31mIndexError\u001b[0m                                Traceback (most recent call last)",
+      "\u001b[0;32m<ipython-input-22-7a6690d71d3d>\u001b[0m in \u001b[0;36m<module>\u001b[0;34m\u001b[0m\n\u001b[1;32m     28\u001b[0m \u001b[0mnx\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mdraw_networkx_labels\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mselected_graph\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mpos\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0mpos_nodes\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     29\u001b[0m \u001b[0max\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mplt\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mgca\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m \u001b[0;31m# to get the current axis\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m---> 30\u001b[0;31m \u001b[0max\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mcollections\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0;36m0\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mset_edgecolor\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m\"#000000\"\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m     31\u001b[0m \u001b[0mplt\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0msavefig\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m'dataset/output/23052022_user_image_bc_600.png'\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mdpi\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;36m600\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     32\u001b[0m \u001b[0mplt\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0msavefig\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m'dataset/output/23052022_user_image_bc_300.png'\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mdpi\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;36m300\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;31mIndexError\u001b[0m: list index out of range"
+     ]
+    },
+    {
+     "data": {
+      "image/png": "iVBORw0KGgoAAAANSUhEUgAABGoAAAM9CAYAAADEm5XHAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAALEgAACxIB0t1+/AAAADh0RVh0U29mdHdhcmUAbWF0cGxvdGxpYiB2ZXJzaW9uMy4xLjMsIGh0dHA6Ly9tYXRwbG90bGliLm9yZy+AADFEAAAWPUlEQVR4nO3bsXECURAFwfsqhQC2Lv9YIAhsKYeVgQt4ginU7T5n7anaNTMbAAAAAK/38eoDAAAAALgSagAAAAAihBoAAACACKEGAAAAIEKoAQAAAIj4fDQeDofZ9/1JpwAAAAC8v/P5/DMzx1vbw1Cz7/t2Op3+5ioAAACAf2itdbm3eX0CAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACKEGgAAAIAIoQYAAAAgQqgBAAAAiBBqAAAAACLWzNwf1/retu3yvHMAAAAA3t7XzBxvDQ9DDQAAAADP4/UJAAAAIEKoAQAAAIgQagAAAAAihBoAAACACKEGAAAAIOIX/mYgG2Gqq38AAAAASUVORK5CYII=\n",
+      "text/plain": [
+       "<Figure size 1440x1080 with 1 Axes>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "plt.figure(figsize=(20, 15))\n",
+    "plt.margins(0.1, 0.1)\n",
+    "\n",
+    "def nudge(pos, x_shift, y_shift):\n",
+    "    return {n:(x + x_shift, y + y_shift) for n,(x,y) in pos.items()}\n",
+    "\n",
+    "pos = nx.spring_layout(selected_graph, k=0.4, iterations=30)\n",
+    "degrees = nx.degree(selected_graph)\n",
+    "pos_nodes = nudge(pos, 0, 0.04)\n",
+    "node_size = [(degrees[v] * 150) for v in selected_graph.nodes()]\n",
+    "#betCent = nx.betweenness_centrality(selected_graph, normalized=False, endpoints=True)\n",
+    "#node_size =  [v * 50 for v in betCent.values()]\n",
+    "node_color = [change_node_color(node) for node in selected_graph]\n",
+    "edge_color = [change_edge_color(selected_graph[u][v]['color']) for u,v in selected_graph.edges()]\n",
+    "edge_weight = [(selected_graph[u][v]['weight']) for u,v in selected_graph.edges()]\n",
+    "edge_discretization = discretization_weight(edge_weight)\n",
+    "\n",
+    "final_weight = []\n",
+    "for i in edge_discretization:\n",
+    "    final_weight.append(i/5)\n",
+    "\n",
+    "nx.draw_networkx(selected_graph, pos=pos, cmap=plt.cm.PiYG, \n",
+    "                 node_size=node_size, \n",
+    "                 node_color=node_color,\n",
+    "                 edge_color=edge_color, width=final_weight,\n",
+    "                 font_size=14,\n",
+    "                 with_labels=False, linewidths=1)\n",
+    "nx.draw_networkx_labels(selected_graph, pos=pos_nodes)\n",
+    "ax = plt.gca() # to get the current axis\n",
+    "ax.collections[0].set_edgecolor(\"#000000\")\n",
+    "plt.savefig('dataset/output/23052022_user_image_bc_600.png', dpi=600)\n",
+    "plt.savefig('dataset/output/23052022_user_image_bc_300.png', dpi=300)\n",
+    "#plt.savefig('dataset/output/23052022_user_image_ac_600.png', dpi=600)\n",
+    "#plt.savefig('dataset/output/23052022_user_image_ac_300.png', dpi=300)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 102,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Modularity Score:  0.6430763040088509\n"
+     ]
+    }
+   ],
+   "source": [
+    "import networkx as nx\n",
+    "from networkx.algorithms import community\n",
+    "\n",
+    "naive_greedy = community.greedy_modularity_communities(selected_graph)\n",
+    "naive_greedy\n",
+    "\n",
+    "modularity_score = community.modularity(selected_graph, naive_greedy)\n",
+    "print('Modularity Score: ', modularity_score)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**2. Graf dari Hasil Emotion Recall Task berdasarkan Pengguna**"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 32,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "ert_data_array = []\n",
+    "\n",
+    "for i, user_data in ert_result.iterrows():\n",
+    "    \n",
+    "    if user_data['username'] in list(selected_graph.nodes()):\n",
+    "        \n",
+    "        ert_data_array.append([user_data['username'], user_data['ert_words'], user_data['total_valence_score']])\n",
+    "\n",
+    "ert_data = pd.DataFrame(ert_data_array, columns=ert_result.columns)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "ert_list = []\n",
+    "for user in list(selected_graph.nodes()):\n",
+    "    ert = ert_data[ert_data['username'] == user]\n",
+    "    \n",
+    "    ert_list.append(ert['total_valence_score'][ert.index[0]])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#G = nx.karate_club_graph()\n",
+    "plt.figure(figsize=(20,15))\n",
+    "plt.margins(0.1, 0.1)\n",
+    "df = (pd.DataFrame(list(selected_graph.degree), columns=['node','degree'])\n",
+    "        .set_index('node'))\n",
+    "df['color'] = ert_list\n",
+    "\n",
+    "#layout = nx.fruchterman_reingold_layout(graph_data)\n",
+    "vmin = -5\n",
+    "vmax = 5\n",
+    "#vmin = df['color'].min()\n",
+    "#vmax = df['color'].max()\n",
+    "cmap = plt.cm.RdYlBu\n",
+    "\n",
+    "def nudge(pos, x_shift, y_shift):\n",
+    "    return {n:(x + x_shift, y + y_shift) for n,(x,y) in pos.items()}\n",
+    "\n",
+    "pos = nx.spring_layout(selected_graph, k=1.7, iterations=30)\n",
+    "degrees = nx.degree(selected_graph)\n",
+    "pos_nodes = nudge(pos, 0, 0.05)\n",
+    "node_size = [(degrees[v] * 80) for v in selected_graph.nodes()]\n",
+    "\n",
+    "nx.draw_networkx(selected_graph, pos=pos, node_size=node_size, with_labels=False, \n",
+    "                 node_color=df['color'], font_size=14, edge_color='#C0C0C0',\n",
+    "                 cmap=cmap, vmin=vmin, vmax=vmax, linewidths=1)\n",
+    "nx.draw_networkx_labels(selected_graph, pos=pos_nodes)\n",
+    "sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax))\n",
+    "sm.set_array([])\n",
+    "ax = plt.gca() # to get the current axis\n",
+    "ax.collections[0].set_edgecolor(\"#000000\")\n",
+    "cbar = plt.colorbar(sm, aspect=10, fraction=0.02)\n",
+    "cbar.ax.set_yticklabels(['- 5 (Unpleasant)', '- 2', '0', '2', '5 (Pleasent)'])\n",
+    "cbar.ax.tick_params(labelsize=14)\n",
+    "#plt.savefig('dataset/output/ert_image_bc_600.png', dpi=600)\n",
+    "#plt.savefig('dataset/output/ert_image_bc_300.png', dpi=300)\n",
+    "plt.savefig('dataset/output/ert_image_ac_600.png', dpi=600)\n",
+    "plt.savefig('dataset/output/ert_image_ac_300.png', dpi=300)"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.7.6"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}
